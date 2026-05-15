@@ -162,15 +162,55 @@ Fix in this order to avoid breaking the frontend mid-deploy:
 
 ## Definition of Done
 
-- [ ] Start environment: `docker-compose up --build`
-- [ ] Log in as Ocean Rentals (`ocean@propertyflow.com` / `client_b_2024`), view `prop-001` — sees their own revenue only
-- [ ] Log in as Sunset Properties (`sunset@propertyflow.com` / `client_a_2024`), view `prop-001` — sees their own revenue only
-- [ ] Redis cache cleared between tests to confirm isolation
-- [ ] `prop-001` (tenant-a) total = **2250.000** (1250.000 + 333.333 + 333.333 + 333.334) — no float drift
-- [ ] March monthly revenue for `prop-001` (tenant-a) = **2250.000** (not 0)
-- [ ] Reservation `res-tz-1` (`2024-02-29 23:30:00+00`) counted in **March** for Europe/Paris, not February
-- [ ] Displayed totals match DB values exactly — finance confirms no cent discrepancies
-- [ ] Both client accounts can only see their own data after multiple refreshes
+- [x] Start environment: `docker-compose up --build`
+      → Fixed: `database_pool.py` now uses `settings.database_url`; `supabase_connection_pool.py` skips gracefully when `SUPABASE_URL` absent
+- [x] Log in as Ocean Rentals (`ocean@propertyflow.com` / `client_b_2024`), view `prop-001` — sees their own revenue only
+      → Fixed: cache key is now `revenue:{property_id}:{tenant_id}`
+      → E2E test: `test_e2e_dashboard.py::TestCacheTenantIsolation::test_ocean_gets_own_revenue_for_prop_001`
+- [x] Log in as Sunset Properties (`sunset@propertyflow.com` / `client_a_2024`), view `prop-001` — sees their own revenue only
+      → Fixed: same cache key fix
+      → E2E test: `test_e2e_dashboard.py::TestCacheTenantIsolation::test_sunset_gets_own_revenue_for_prop_001`
+- [x] Redis cache cleared between tests to confirm isolation
+      → E2E test: `test_e2e_dashboard.py::TestCacheTenantIsolation::test_tenants_see_different_totals_for_same_property_id`
+      → Unit test: `test_cache_isolation.py::TestCacheIsolation::test_tenant_a_and_b_use_different_cache_keys`
+- [x] `prop-001` (tenant-a) total = **2250.000** (1250.000 + 333.333 + 333.333 + 333.334) — no float drift
+      → Fixed: `dashboard.py` returns `str(revenue_data['total'])` instead of `float(...)`
+      → E2E test: `test_e2e_dashboard.py::TestRevenuePrecision::test_prop_001_tenant_a_total_is_exact`
+      → Unit test: `test_dashboard_precision.py::TestDecimalArithmetic::test_prop_001_tenant_a_exact_sum`
+- [x] March monthly revenue for `prop-001` (tenant-a) = **2250.000** (not 0)
+      → Fixed: `calculate_monthly_revenue` now queries the database
+      → Unit test: `test_monthly_revenue.py::TestMonthlyRevenueNotPlaceholder::test_monthly_revenue_returns_db_value_not_zero`
+- [x] Reservation `res-tz-1` (`2024-02-29 23:30:00+00`) counted in **March** for Europe/Paris, not February
+      → Fixed: month boundaries use `datetime(..., tzinfo=ZoneInfo(property_timezone))`
+      → Unit test: `test_monthly_revenue.py::TestTimezoneAwareBoundaries::test_aware_datetime_correctly_includes_res_tz_1_in_march`
+- [x] Displayed totals match DB values exactly — finance confirms no cent discrepancies
+      → Fixed: frontend uses `parseFloat(string).toFixed(2)` instead of `Math.round(float * 100) / 100`
+      → Frontend test: `RevenueSummary.test.tsx — does not display 999.99 for a value that is exactly 1000.000`
+- [x] Both client accounts can only see their own data after multiple refreshes
+      → E2E test: `test_e2e_dashboard.py::TestCacheTenantIsolation::test_second_request_uses_cache_and_still_isolates`
+
+## How to Run Tests
+
+### Backend unit tests (no server needed)
+```bash
+cd backend
+pip install pytest pytest-asyncio httpx
+pytest tests/test_cache_isolation.py tests/test_monthly_revenue.py tests/test_dashboard_precision.py -v
+```
+
+### Backend E2E tests (requires live server)
+```bash
+docker-compose up --build -d
+cd backend
+pytest tests/test_e2e_dashboard.py -v
+```
+
+### Frontend tests
+```bash
+cd frontend
+npm install
+npm test
+```
 
 ---
 
