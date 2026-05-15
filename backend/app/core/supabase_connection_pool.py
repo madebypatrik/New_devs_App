@@ -320,29 +320,34 @@ class SupabaseConnectionPool:
         """Initialize the connection pool"""
         if self._initialized:
             return
-            
+
+        if not settings.supabase_url or not settings.supabase_service_role_key:
+            logger.warning("⚠️ SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — Supabase connection pool disabled. Using local database only.")
+            self._initialized = True
+            return
+
         try:
             logger.info(f"Initializing Supabase connection pool with {self.max_connections} connections")
-            
+
             # Create initial pool of connections
             for i in range(min(10, self.max_connections)):  # Start with 10 connections
                 client = self._create_client()
                 self._clients.append(client)
                 self._client_created_times[client] = time.time()
                 await self._pool.put(client)
-            
+
             self.metrics.total_connections = len(self._clients)
-            
+
             # Start background tasks
             self._health_monitor_task = asyncio.create_task(self._health_monitor())
             self._pool_cleaner_task = asyncio.create_task(self._pool_cleaner())
-            
+
             self._initialized = True
             logger.info(f"✅ Supabase connection pool initialized with {len(self._clients)} connections")
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to initialize Supabase connection pool: {e}")
-            raise
+            self._initialized = True  # Mark as initialized to prevent retry loops
     
     def _create_client(self) -> Client:
         """Create a new Supabase client"""
