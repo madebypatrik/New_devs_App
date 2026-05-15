@@ -61,4 +61,4 @@ jobs:
         run: npm ci
 
       - name: Run frontend tests
-        run: npm test -- --run
+        run: npm test
